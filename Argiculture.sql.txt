@@ -1,0 +1,98 @@
+CREATE OR REPLACE STORAGE INTEGRATION SEASON_INTEGRATION
+TYPE=EXTERNAL_STAGE
+STORAGE_PROVIDER='S3'
+ENABLED=TRUE
+STORAGE_AWS_ROLE_ARN='arn:aws:iam::242046726912:role/season.powerbi'
+STORAGE_ALLOWED_LOCATIONS=('s3://season.powerbi/')
+COMMENT='OPTIONAL COMMENT'
+DESC INTEGRATION SEASON_INTEGRATION;
+
+//CREATING DATABASE TO LOAD DATA
+
+CREATE DATABASE SEASON;
+USE SEASON;
+
+CREATE SCHEMA SEASON_DATA;
+
+CREATE TABLE SEASON_DATASET(
+Year INT, Location STRING, Area INT,
+Rainfall FLOAT, Temperature FLOAT, Soil_type STRING,
+Irrigation STRING, yeilds INT, Humidity FLOAT,
+Crops STRING, price INT,
+Season STRING
+
+);
+
+SELECT * FROM SEASON_DATASET;
+
+
+// CREATING STAGE FOR DATASET
+
+
+CREATE STAGE SEASON.SEASON_DATA.SEASON_stage
+url = 's3://season.powerbi/'
+storage_integration= SEASON_INTEGRATION;
+
+// COPY DATA INTO STAGE THAT WE HAVE CREATED
+
+COPY INTO SEASON_DATASET
+FROM @SEASON_STAGE
+FILE_FORMAT=(TYPE=CSV FIELD_DELIMITER=',' SKIP_HEADER=1)
+ON_ERROR='CONTINUE';
+
+LIST @SEASON_STAGE;
+
+// data transforming
+
+create table agriculture as select * from season_dataset;
+
+select * from agriculture;
+
+update agriculture
+set rainfall=1.1*rainfall;
+
+// year 2004-2009 Y1
+// year 2010 - 2015 Y2
+// year 2016-2019 Y3
+
+alter table agriculture
+add year_group string;
+
+update agriculture
+set year_group = 'Y1'
+where year>=2004 and year<=2009;
+
+update agriculture
+set year_group = 'Y2'
+where year>=2010 and year<=2015;
+
+update agriculture
+set year_group = 'Y3'
+where year>=2016 and year<=2019;
+
+select year, count(*) as count from agriculture group by year;
+select year_group, count(*) as count from agriculture group by year_group;
+
+// creating rainfall groups
+// min 255 & max 4103
+
+//rainfall between 255 to 1200 then = low
+//rainfall between 1200 to 2800 then = medium
+//rainfall between 2800 to 4103 then = high
+
+ALTER TABLE agriculture
+add COLUMN rainfall_grp string;
+
+update agriculture
+set rainfall_grp= 'Low'
+where rainfall>=255 and rainfall<1200;
+
+update agriculture
+set rainfall_grp= 'Medium'
+where rainfall>=1200 and rainfall<2800;
+
+update agriculture
+set rainfall_grp= 'High'
+where rainfall>=2800 and rainfall<4103;
+
+select rainfall_grp, count(*) as count from agriculture group by rainfall_grp;
